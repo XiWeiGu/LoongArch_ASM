@@ -1,5 +1,8 @@
+//
+// Contributed by Gu Xiwei(2414434710@qq.com)
+//
+
 #define ASM_PREF
-#define DEFAULT_ALIGN 4
 
 #define cpucfg_lsx   0x01 // (1 << 0)
 #define cpucfg_lasx  0x03 // (1 << 1) | cpucfg_lsx
@@ -11,7 +14,7 @@
 //
 // Auxiliary Macros
 //
-.macro function name, cpucfg, align=DEFAULT_ALIGN
+.macro function name, cpucfg, align=4
 .macro endfunc
     jirl    $r0, $r1, 0x0
 .if \cpucfg == cpucfg_lsx
@@ -66,6 +69,15 @@ ASM_PREF\name\()_lasx: ;
     .err
 .endif
 .endm
+.macro const name, align=5
+.macro endconst
+    .size  \name, . - \name
+    .purgem endconst
+.endm
+.section .rodata
+.align   \align
+\name:
+.endm
 
 
 //
@@ -73,7 +85,7 @@ ASM_PREF\name\()_lasx: ;
 //
 //
 // LD: Support continuous fetch 32-bits, 64-bits, 128-bits and 256-bit
-// from src with stride.
+// from src with stride(imm).
 // LD xv, , src, stride, 0, 2: Fetch 256-bit into $xr0, $xr1, $xr2 with stride
 // LD v , , src, stride, 0, 2: Fetch 128-bit into $vr0, $vr1, $vr2 with stride
 // LD f, d, src, stride, 0, 2: Fetch 64-bits into $f0, $f1, $f2 with stride
@@ -81,34 +93,101 @@ ASM_PREF\name\()_lasx: ;
 //
 .macro LD pre_op, suf_op=0, src, stride, out_start=0, out_end
 .if \suf_op == 0
-    \pre_op\()_template2 \pre_op\()ld, \out_start, \src, 0
+    \pre_op\()_template2 \pre_op\()ld, 0, \src, \out_start
 .else
-    \pre_op\()_template2 \pre_op\()\ld.\suf_op, \out_start, \src, 0
+    \pre_op\()_template2 \pre_op\()ld.\suf_op, 0, \src, \out_start
 .endif
-    add.d   \src,    \src,   \stride
-.if (\out_start + 1) < \end
+    addi.d    \src,    \src,   \stride
+.if \out_end - \out_start
     LD \pre_op, \suf_op, \src, \stride, %out_start + 1, \out_end
 .endif
 .endm
-
-.macro XOR pre_op, suf_op=v, in_start, in_end, out_start, out_end=0
+//
+// LDX is same as LD except the stride is a register
+//
+.macro LDX pre_op, suf_op=0, src, stride, out_start=0, out_end
+.if \suf_op == 0
+    \pre_op\()_template2 \pre_op\()ld, 0, \src, \out_start
+.else
+    \pre_op\()_template2 \pre_op\()ld.\suf_op, 0, \src, \out_start
+.endif
+    add.d     \src,    \src,   \stride
+.if \out_end - \out_start
+    LDX \pre_op, \suf_op, \src, \stride, %out_start + 1, \out_end
+.endif
+.endm
+//
+// ST: Support continuous fetch 32-bits, 64-bits, 128-bits and 256-bit
+// from src with stride(imm).
+// ST xv, , src, stride, 0, 2: Fetch 256-bit into $xr0, $xr1, $xr2 with stride
+// ST v , , src, stride, 0, 2: Fetch 128-bit into $vr0, $vr1, $vr2 with stride
+// ST f, d, src, stride, 0, 2: Fetch 64-bits into $f0, $f1, $f2 with stride
+// ST f, s, src, stride, 0, 2: Fetch 32-bits into $f0, $f1, $f2 with stride
+//
+.macro ST pre_op, suf_op=0, src, stride, out_start=0, out_end=0
+.if \suf_op == 0
+    \pre_op\()_template2 \pre_op\()st, 0, \src, \out_start
+.else
+    \pre_op\()_template2 \pre_op\()st.\suf_op, 0, \src, \out_start
+.endif
+    addi.d    \src,    \src,   \stride
+.if \out_end == 0
+    .exitm
+.endif
+.if \out_end - \out_start
+    ST \pre_op, \suf_op, \src, \stride, %out_start + 1, \out_end
+.endif
+.endm
+//
+// STX is same as ST except the stride is a register
+//
+.macro STX pre_op, suf_op=0, src, stride, out_start=0, out_end
+.if \suf_op == 0
+    \pre_op\()_template2 \pre_op\()st, 0, \src, \out_start
+.else
+    \pre_op\()_template2 \pre_op\()st.\suf_op, 0, \src, \out_start
+.endif
+    add.d    \src,    \src,   \stride
+.if \out_end - \out_start
+    STX \pre_op, \suf_op, \src, \stride, %out_start + 1, \out_end
+.endif
+.endm
+//
+// XOR: Support continuous xor and has no suf_op param.
+// if (in_end - in_start) == (out_end - out_start),
+// Means that the input parameters of the instruction
+// are consistent, like vxor.v vr1, vr0, vr0.
+// Otherwise the input parameter of the instruction
+// is incremented, like vxor.v vr2, vr1, vr0.
+//
+.macro XOR pre_op, in_start, in_end, out_start, out_end=0
 .if (\in_end - \in_start) == (\out_end - \out_start)
-    \pre_op\()template \pre_op\()xor.v, \in_start, \in_start, \out_start
-    .if (\in_start + 1) <= \in_end
-        XOR \pre_op, \suf_op, %in_start + 1, \in_end, %out_start + 1, \out_end
+    \pre_op\()_template \pre_op\()xor.v, \in_start, \in_start, \out_start
+    .if \in_end - \in_start
+        XOR \pre_op, %in_start + 1, \in_end, %out_start + 1, \out_end
     .endif
 .else
-    \pre_op\()template \pre_op\()xor.v, \in_start, %in_start + 1, \out_start
-    .if (\in_start + 2) <= \in_end
-        XOR \pre_op, \suf_op, %in_start + 2, \in_end, %out_start + 1, \out_end
+    \pre_op\()_template \pre_op\()xor.v, \in_start, %in_start + 1, \out_start
+    .if \in_end - \in_start - 1
+        XOR \pre_op, %in_start + 2, \in_end, %out_start + 1, \out_end
     .endif
 .endif
 .endm
-
-.macro ILVL pre_op, suf_op, in_start, in_end, out_start /*, out_end */
+//
+// ILVL: Support continuous ilvl.
+// There are two cases, see XOR for details.
+//
+.macro ILVL pre_op, suf_op, in_start, in_end, out_start, out_end=0
+.if (\in_end - \in_start) == (\out_end - \out_start)
+    \pre_op\()_template    \pre_op\()ilvl.\suf_op, \in_start, \in_start, \out_start
+    .if \in_end - \in_start
+        ILVL \pre_op, suf_op, %in_start + 1, \in_end, %out_start + 1, \out_end
+    .endif
+.else
     \pre_op\()_template    \pre_op\()ilvl.\suf_op, \in_start, %in_start + 1, \out_start
-.if (\in_start + 2) <= \in_end
-    ILVL \pre_op, suf_op, %in_start + 2, \in_end, %out_start + 1
+    .if \in_end - \in_start - 1
+        ILVL \pre_op, suf_op, %in_start + 2, \in_end, %out_start + 1, \out_end
+    .endif
 .endif
 .endm
 
