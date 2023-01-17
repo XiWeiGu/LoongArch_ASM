@@ -1,3 +1,4 @@
 *.swap
 *.swo
 *.o
+*.out

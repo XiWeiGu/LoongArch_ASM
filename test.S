@@ -15,14 +15,14 @@ endconst
 function \name, \cpucfg
     la.local $t0,   test_ld
 
-    LD f, s, $t0, 4, 0, 15
-    ST f, s, $a0, 4, 0, 15
+    LD f, s, $t0, 4, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+    ST f, s, $a0, 4, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 
-    LD f, d, $t0, 8, 0, 7
-    ST f, d, $a0, 8, 0, 7
+    LD f, d, $t0, 8, 0, 1, 2, 3, 4, 5, 6, 7
+    ST f, d, $a0, 8, 0, 1, 2, 3, 4, 5, 6, 7
 
-    LD v, , $t0, 16, 0, 3
-    ST v, , $a0, 16, 0, 3
+    LD v, , $t0, 16, 0, 1, 2, 3
+    ST v, , $a0, 16, 0, 1, 2, 3
 
     LD xv, , $t0, 32, 0, 1
     ST xv, , $a0, 32, 0, 1
@@ -36,16 +36,16 @@ function \name, \cpucfg
     la.local    $t0,    test_ld
 
     addi.d      $t1,    $zero,  4
-    LDX f, s, $t0, $t1, 0, 15
-    STX f, s, $a0, $t1, 0, 15
+    LDX f, s, $t0, $t1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+    STX f, s, $a0, $t1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 
     addi.d      $t1,    $zero,  8
-    LDX f, d, $t0, $t1, 0, 7
-    STX f, d, $a0, $t1, 0, 7
+    LDX f, d, $t0, $t1, 0, 1, 2, 3, 4, 5, 6, 7
+    STX f, d, $a0, $t1, 0, 1, 2, 3, 4, 5, 6, 7
 
     addi.d      $t1,    $zero,  16
-    LDX v, , $t0, $t1, 0, 3
-    STX v, , $a0, $t1, 0, 3
+    LDX v, , $t0, $t1, 0, 1, 2, 3
+    STX v, , $a0, $t1, 0, 1, 2, 3
 
     addi.d      $t1,    $zero,  32
     LDX xv, , $t0, $t1, 0, 1
@@ -59,14 +59,14 @@ TEST_LDX test_ldx, cpucfg_lasx
 function \name, \cpucfg
     la.local $t0,   test_ld
 
-    LD v, , $t0, 16, 0, 7
-    XOR v, 0, 3, 8, 11
-    ST v, , $a0, 16, 8, 11
-    XOR v, 4, 7, 12, 13
+    LD v, , $t0, 16, 0, 1, 2, 3, 4, 5, 6, 7
+    XOR v, 0, 0, 8, 1, 1, 9, 2, 2, 10, 3, 3, 11
+    ST v, , $a0, 16, 8, 9, 10, 11
+    XOR v, 4, 5, 12, 6, 7, 13
     ST v, , $a0, 16, 12, 13
 
-    LD xv, , $t0, 32, 0, 3
-    XOR xv, 0, 1, 4, 5
+    LD xv, , $t0, 32, 0, 1, 2, 3
+    XOR xv, 0, 0, 4, 1, 1, 5
     ST xv, , $a0, 32, 4, 5
     XOR xv, 2, 3, 6
     ST xv, , $a0, 32, 6
@@ -79,16 +79,16 @@ TEST_XOR test_xor, cpucfg_lasx
 function \name, \cpucfg
     la.local $t0,   test_ld
 
-    LD v, , $t0, 16, 0, 7
-    ILVL v, w, 0, 3, 8, 11
-    ST v, , $a0, 16, 8, 11
-    ILVL v, w, 4, 7, 12, 13
+    LD v, , $t0, 16, 0, 1, 2, 3, 4, 5, 6, 7
+    ILVL v, w, 0, 0, 8, 1, 1, 9, 2, 2, 10, 3, 3, 11
+    ST v, , $a0, 16, 8, 9, 10, 11
+    ILVL v, w, 4, 5, 12, 6, 7, 13
     ST v, , $a0, 16, 12, 13
 
-    LD xv, , $t0, 32, 0, 3
-    ILVL v, w, 0, 1, 4, 5
+    LD xv, , $t0, 32, 0, 1, 2, 3
+    ILVL xv, w, 0, 0, 4, 1, 1, 5
     ST xv, , $a0, 32, 4, 5
-    ILVL v, w, 2, 3, 6
+    ILVL xv, w, 2, 3, 6
     ST xv, , $a0, 32, 6
 endfunc
 .endm
