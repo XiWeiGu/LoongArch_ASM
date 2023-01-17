@@ -171,6 +171,15 @@ ASM_PREF\name\()_lasx: ;
     ILVL \pre_op, \suf_op, \more
 .endif
 .endm
+//
+// ILVH: Support continuous ilvh. Like ILVL.
+//
+.macro ILVH pre_op:req, suf_op:req, in0:req, in1:req, out:req, more:vararg
+    \pre_op\()_template    \pre_op\()ilvh.\suf_op, \in0, \in1, \out
+.ifnb \more
+    ILVH \pre_op, \suf_op, \more
+.endif
+.endm
 
 
 //
@@ -181,21 +190,19 @@ ASM_PREF\name\()_lasx: ;
     \pre_op\()_template \pre_op\()ilvh.\suf_op, \in0, \in1, \out1
 .endm
 
-.macro TRANSPOSE4x4_H pre_op, in_start, in_end, \
-                      out_start, out_end, vt_start, vt_end
-    ILVL \pre_op, h, \in_start, \in_end, \vt_start
-    SBUTTERFLY \pre_op, w, \vt_start, %vt_start + 1, \out_start, %out_start + 2
+.macro TRANSPOSE4x4_H pre_op, in0, in1, in2, in3,\
+                      out0, out1, out2, out3, vt0, vt1
+    ILVL \pre_op, h, \in0, \in1, \vt0, \in2, \in3, \vt1
+    SBUTTERFLY \pre_op, w, \vt0, \vt1, \out0, \out2
+    ILVH \pre_op, d, \out0, \out0, \out1, \out2, \out0, \out3
 .endm
 
-.macro TRANSPOSE4x4_W pre_op, in_start, in_end, \
-                      out_start, out_end, vt_start, vt_end
-    parameter_check \in_start,  \in_end,  3
-    parameter_check \out_start, \out_end, 3
-    parameter_check \vt_start,  \vt_end,  1
-    SBUTTERFLY \pre_op, w, \in_start, %in_start + 1, \vt_start, %out_start + 1
-    SBUTTERFLY \pre_op, w, %in_start + 2, %in_start + 3, %vt_start + 1, %out_start + 3
-    SBUTTERFLY \pre_op, d, \vt_start, %vt_start + 1, \out_start, %out_start + 1
-    SBUTTERFLY \pre_op, d, %out_start + 1,  %out_start + 3, %out_start + 2, %out_start + 3
+.macro TRANSPOSE4x4_W pre_op, in0, in1, in2, in3, \
+                      out0, out1, out2, out3, vt0, vt1
+    SBUTTERFLY \pre_op, w, \in0,  \in1,  \vt0,  \out1
+    SBUTTERFLY \pre_op, w, \in2,  \in3,  \vt1,  \out3
+    ILVL \pre_op, d, \vt0, \vt1, \out0, \out1, \out3, \out2
+    ILVH \pre_op, d, \out1, \out3, \out3, \vt0, \vt1, \out1
 .endm
 
 

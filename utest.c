@@ -1,10 +1,14 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 void test_ld_lasx(int*);
 void test_ldx_lasx(int*);
 void test_xor_lasx(int*);
 void test_ilvl_lasx(int*);
+void test_ilvh_lasx(int*);
+void test_transpose4x4_w_lasx(int*);
+void test_transpose4x4_h_lasx(int16_t*);
 
 void test_ld_c() {
     int ref[64] = {
@@ -88,9 +92,64 @@ void test_ilvl_c() {
     printf("Macro ILVL utest failed !!! \n");
 }
 
+void test_ilvh_c() {
+    int ref[48] = {
+    2, 2, 3, 3, 6, 6, 7, 7,
+    0xa, 0xa, 0xb, 0xb, 0xe, 0xe, 0xf, 0xf,
+    0x12, 0x16, 0x13, 0x17, 0x1a, 0x1e, 0x1b, 0x1f,
+    2, 2, 3, 3, 6, 6, 7, 7,
+    0xa, 0xa, 0xb, 0xb, 0xe, 0xe, 0xf, 0xf,
+    0x12, 0x1a, 0x13, 0x1b, 0x16, 0x1e, 0x17, 0x1f
+    };
+    int dst[48];
+    test_ilvh_lasx(dst);
+    if (!memcmp(dst, ref, 48 * 4))
+    {
+        printf("Macro ILVH utest passed !!! \n");
+        return;
+    }
+    printf("Macro ILVH utest failed !!! \n");
+}
+
+void test_transpose4x4_h_c() {
+    int16_t ref[32] = {
+        0, 8, 0x10, 0x18, 1, 9, 0x11, 0x19,
+        2, 0xa, 0x12, 0x1a, 3, 0xb, 0x13, 0x1b,
+        0, 8, 0x10, 0x18, 1, 9, 0x11, 0x19,
+        2, 0xa, 0x12, 0x1a, 3, 0xb, 0x13, 0x1b
+    };
+    int16_t dst[32];
+    test_transpose4x4_h_lasx(dst);
+    if (!memcmp(dst, ref, 32 * 2))
+    {
+        printf("Macro TRANSPOSE4x4_H utest passed !!! \n");
+        return;
+    }
+    printf("Macro TRANSPOSE4x4_H utest failed !!! \n");
+}
+void test_transpose4x4_w_c() {
+    int ref[32] = {
+        0, 4, 8, 0xc, 1, 5, 9, 0xd,
+        2, 6, 0xa, 0xe, 3, 7, 0xb, 0xf,
+        0x10, 0x18, 0, 8, 0x11, 0x19, 1, 9,
+        0x12, 0x1a, 2, 0xa, 0x13, 0x1b, 3, 0xb
+    };
+    int dst[32];
+    test_transpose4x4_w_lasx(dst);
+    if (!memcmp(dst, ref, 32 * 4))
+    {
+        printf("Macro TRANSPOSE4x4_W utest passed !!! \n");
+        return;
+    }
+    printf("Macro TRANSPOSE4x4_W utest failed !!! \n");
+}
+
 void main() {
     test_ld_c();
     test_ldx_c();
     test_xor_c();
     test_ilvl_c();
+    test_ilvh_c();
+    test_transpose4x4_h_c();
+    test_transpose4x4_w_c();
 }
