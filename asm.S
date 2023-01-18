@@ -189,12 +189,58 @@ ASM_PREF\name\()_lasx: ;
     \pre_op\()_template \pre_op\()ilvl.\suf_op, \in0, \in1, \out0
     \pre_op\()_template \pre_op\()ilvh.\suf_op, \in0, \in1, \out1
 .endm
+.macro INTERLACE pre_op, suf_op, in0, in1, out0, out1
+    \pre_op\()_template \pre_op\()pickev.\suf_op, \in0, \in1, \out0
+    \pre_op\()_template \pre_op\()pickod.\suf_op, \in0, \in1, \out1
+.endm
 
 .macro TRANSPOSE4x4_H pre_op, in0, in1, in2, in3,\
                       out0, out1, out2, out3, vt0, vt1
     ILVL \pre_op, h, \in0, \in1, \vt0, \in2, \in3, \vt1
     SBUTTERFLY \pre_op, w, \vt0, \vt1, \out0, \out2
     ILVH \pre_op, d, \out0, \out0, \out1, \out2, \out0, \out3
+.endm
+
+//
+// TRANSPOSE8x8_H: Transpose 8x8 block with half-word elements in vectors.
+// Typically, eight temporary vector registers are used. In some extreme cases
+// vector registers are rare. When the input and output are different vector
+// registers, the output is used internally as a temporary vector register so
+// that only four temporary vector registers are needed.
+//
+.macro TRANSPOSE8x8_H pre_op, in0, in1, in2, in3, in4, in5, in6, in7, \
+                      out0, out1, out2, out3, out4, out5, out6, out7, \
+                      vt0, vt1, vt2, vt3, more:vararg
+.ifnb \more
+    transpose8x8_h_internal \pre_op, \in0, \in1, \in2, \in3, \in4, \in5, \in6, \in7, \
+                            \out0, \out1, \out2, \out3, \out4, \out5, \out6, \out7, \
+                            \vt0, \vt1, \vt2, \vt3, \more
+.else
+    ILVL \pre_op, h, \in4, \in6, \out0, \in5, \in7, \out1, \in0, \in2, \out2, \in1, \in3, \out3
+    SBUTTERFLY \pre_op, h, \out0, \out1, \out4, \out5
+    SBUTTERFLY \pre_op, h, \out2, \out3, \out6, \out7
+    INTERLACE \pre_op, d, \out6, \out4, \out0, \out1
+    INTERLACE \pre_op, d, \out7, \out5, \out2, \out3
+    ILVH \pre_op, h, \in4, \in6, \out4, \in5, \in7, \out5, \in0, \in2, \out6, \in1, \in3, \out7
+    SBUTTERFLY \pre_op, h, \out4, \out5, \vt0, \vt1
+    SBUTTERFLY \pre_op, h, \out6, \out7, \vt2, \vt3
+    INTERLACE \pre_op, d, \vt2, \vt0, \out4, \out5
+    INTERLACE \pre_op, d, \vt3, \vt1, \out6, \out7
+.endif
+.endm
+.macro transpose8x8_h_internal pre_op, in0, in1, in2, in3, in4, in5, in6, in7, \
+                               out0, out1, out2, out3, out4, out5, out6, out7, \
+                               vt0, vt1, vt2, vt3, vt4, vt5, vt6, vt7
+    ILVL \pre_op, h, \in4, \in6, \vt0, \in5, \in7, \vt1, \in0, \in2, \vt2, \in1, \in3, \vt3
+    SBUTTERFLY \pre_op, h, \vt0, \vt1, \vt4, \vt5
+    SBUTTERFLY \pre_op, h, \vt2, \vt3, \vt6, \vt7
+    ILVH \pre_op, h, \in4, \in6, \vt0, \in5, \in7, \vt1, \in0, \in2, \vt2, \in1, \in3, \vt3
+    INTERLACE \pre_op, d, \vt6, \vt4, \out0, \out1
+    INTERLACE \pre_op, d, \vt7, \vt5, \out2, \out3
+    SBUTTERFLY \pre_op, h, \vt0, \vt1, \vt4, \vt5
+    SBUTTERFLY \pre_op, h, \vt2, \vt3, \vt6, \vt7
+    INTERLACE \pre_op, d, \vt6, \vt4, \out4, \out5
+    INTERLACE \pre_op, d, \vt7, \vt5, \out6, \out7
 .endm
 
 .macro TRANSPOSE4x4_W pre_op, in0, in1, in2, in3, \

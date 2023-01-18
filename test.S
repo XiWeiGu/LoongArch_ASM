@@ -141,6 +141,23 @@ endfunc
 
 TEST_TRANSPOSE4x4_H test_transpose4x4_h cpucfg_lasx
 
+.macro TEST_TRANSPOSE8x8_H name, cpucfg
+function \name, \cpucfg
+    la.local $t0, test_h
+
+    LD v, , $t0, 16, 0, 1, 2, 3, 4, 5, 6, 7
+    TRANSPOSE8x8_H v, 0, 1, 2, 3, 4, 5, 6, 7, \
+                      0, 1, 2, 3, 4, 5, 6, 7, \
+                      8, 9, 10, 11, 12, 13, 14, 15
+    TRANSPOSE8x8_H xv, 0, 1, 2, 3, 4, 5, 6, 7,      \
+                       8, 9, 10, 11, 12, 13, 14, 15,\
+                       16, 17, 18, 19
+    ST v, , $a0, 16, 8, 9, 10, 11, 12, 13, 14, 15
+endfunc
+.endm
+
+TEST_TRANSPOSE8x8_H test_transpose8x8_h, cpucfg_lasx
+
 .macro TEST_TRANSPOSE4x4_W name, cpucfg
 function \name, \cpucfg
     la.local $t0,   test_w

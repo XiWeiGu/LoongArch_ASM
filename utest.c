@@ -9,6 +9,7 @@ void test_ilvl_lasx(int*);
 void test_ilvh_lasx(int*);
 void test_transpose4x4_w_lasx(int*);
 void test_transpose4x4_h_lasx(int16_t*);
+void test_transpose8x8_h_lasx(int16_t*);
 
 void test_ld_c() {
     int ref[64] = {
@@ -127,6 +128,28 @@ void test_transpose4x4_h_c() {
     }
     printf("Macro TRANSPOSE4x4_H utest failed !!! \n");
 }
+
+void test_transpose8x8_h_c() {
+    int16_t ref[64] = {
+    0, 1,   2,   3,   4,   5,   6,   7,
+    8, 9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+    0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+    0, 1,   2,   3,   4,   5,   6,   7,
+    8, 9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+    0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+    };
+    int16_t dst[64];
+    test_transpose8x8_h_lasx(dst);
+    if (!memcmp(dst, ref, 64 * 2))
+    {
+        printf("Macro TRANSPOSE8x8_H utest passed !!! \n");
+        return;
+    }
+    printf("Macro TRANSPOSE8x8_H utest failed !!! \n");
+}
+
 void test_transpose4x4_w_c() {
     int ref[32] = {
         0, 4, 8, 0xc, 1, 5, 9, 0xd,
@@ -151,5 +174,6 @@ void main() {
     test_ilvl_c();
     test_ilvh_c();
     test_transpose4x4_h_c();
+    test_transpose8x8_h_c();
     test_transpose4x4_w_c();
 }
