@@ -40,8 +40,10 @@ ASM_PREF\name\()_lasx: ;
 // Basic instruction execution template
 // *_template: Both input and output are register numbers,
 // will be parsed to the specified width.
-// *_template2: only output is register number. We can use
+// *_template2: only output is register number, using
 // input directly.
+// *_template3: output and in1 are register number, using
+// in0 directly.
 //
 .macro xv_template ins, in0, in1, out // 256-bit Vector
     \ins $xr\out, $xr\in1, $xr\in0
@@ -60,6 +62,15 @@ ASM_PREF\name\()_lasx: ;
 .endm
 .macro f_template2 ins, in0, in1, out // 64-bit FPR
     \ins $f\out, \in1, \in0
+.endm
+.macro xv_template3 ins, in0, in1, out // 256-bit Vector
+    \ins $xr\out, $xr\in1, \in0
+.endm
+.macro v_template3 ins, in0, in1, out // 128-bit Vector
+    \ins $vr\out, $vr\in1, \in0
+.endm
+.macro f_template3 ins, in0, in1, out // 64-bit FPR
+    \ins $f\out, $f\in1, \in0
 .endm
 //
 // Macros parameter check
@@ -160,6 +171,15 @@ ASM_PREF\name\()_lasx: ;
 .endif
 .endm
 //
+// MOV
+//
+.macro MOV pre_op:req, in:req, out:req, more:vararg
+    \pre_op\()_template \pre_op\()or.v, \in, \in, \out
+.ifnb \more
+    MOV \pre_op, \more
+.endif
+.endm
+//
 // ILVL: Support continuous ilvl.
 // ILVL xv, w, 0, 2, 1, 3, 5, 4 is equal to:
 // xvilvl.w $xr1, $xr2, $xr0
@@ -178,6 +198,15 @@ ASM_PREF\name\()_lasx: ;
     \pre_op\()_template    \pre_op\()ilvh.\suf_op, \in0, \in1, \out
 .ifnb \more
     ILVH \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// PERMI: Support continuous permi.
+//
+.macro PERMI pre_op:req, suf_op:req, in0:req, in1:req, out:req, more:vararg
+    \pre_op\()_template3 \pre_op\()permi.\suf_op \in0, \in1, \out
+.ifnb \more
+    PERMI \pre_op, \suf_op, \more
 .endif
 .endm
 
@@ -249,6 +278,38 @@ ASM_PREF\name\()_lasx: ;
     SBUTTERFLY \pre_op, w, \in2,  \in3,  \vt1,  \out3
     ILVL \pre_op, d, \vt0, \vt1, \out0, \out1, \out3, \out2
     ILVH \pre_op, d, \out1, \out3, \out3, \vt0, \vt1, \out1
+.endm
+
+//
+// TRANSPOSE8x8_W: Transpose 8x8 block with word elements in vectors,
+// has no pre_op param. 128-bit vector instructions are not supported.
+//
+.macro TRANSPOSE8x8_W in0, in1, in2, in3, in4, in5, in6, in7, \
+                      out0, out1, out2, out3, out4, out5, out6, out7, \
+                      vt0, vt1, vt2, vt3
+    SBUTTERFLY xv, w, \in0, \in2, \vt0, \vt2
+    SBUTTERFLY xv, w, \in1, \in3, \vt1, \vt3
+    SBUTTERFLY xv, w, \vt0, \vt1, \out0, \out1
+    SBUTTERFLY xv, w, \vt2, \vt3, \out2, \out3
+    SBUTTERFLY xv, w, \in4, \in6, \vt0, \vt2
+    SBUTTERFLY xv, w, \in5, \in7, \vt1, \vt3
+    SBUTTERFLY xv, w, \vt0, \vt1, \out4, \out5
+    SBUTTERFLY xv, w, \vt2, \vt3, \out6, \out7
+    MOV xv, \out0, \vt0, \out1, \vt1, \out2, \vt2, \out3, \vt3
+    PERMI xv, q, 0x02, \out4, \out0, 0x02, \out5, \out1, 0x02, \out6, \out2, 0x02, \out7, \out3, \
+                 0x31, \vt0, \out4, 0x31, \vt1, \out5, 0x31, \vt2, \out6, 0x31, \vt3, \out7
+.endm
+
+//
+// TRANSPOSE4x4_D: Transpose 4x4 block with double-word elements in vectors,
+// has no pre_op param. 128-bit vector instructions are not supported.
+//
+.macro TRANSPOSE4x4_D in0, in1, in2, in3, out0, out1, out2, out3, \
+                      vt0, vt1
+    SBUTTERFLY xv, d, \in0, \in1, \vt0,  \out1
+    SBUTTERFLY xv, d, \in2, \in3, \out2, \vt1
+    MOV xv, \vt0, \out0, \vt1, \out3
+    PERMI xv, q, 0x02, \out2, \out0, 0x31, \vt0, \out2, 0x31, \out1, \out3, 0x02, \vt1, \out1
 .endm
 
 

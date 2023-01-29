@@ -1,5 +1,12 @@
 #include "asm.S"
 
+const test_d
+.dword 0, 1, 2, 3
+.dword 4, 5, 6, 7
+.dword 8, 9, 0xa, 0xb
+.dword 0xc, 0xd, 0xe, 0xf
+endconst
+
 const test_w
 .int 0, 1,   2,   3,   4,   5,   6,   7
 .int 8, 9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf
@@ -172,3 +179,36 @@ endfunc
 .endm
 
 TEST_TRANSPOSE4x4_W test_transpose4x4_w, cpucfg_lasx
+
+.macro TEST_TRANSPOSE8x8_W name, cpucfg
+function \name, \cpucfg
+    la.local $t0,   test_w
+
+    LD xv, , $t0, 32, 0, 1, 2, 3, 4, 5, 6, 7
+    TRANSPOSE8x8_W 0, 1, 2, 3, 4, 5, 6, 7,       \
+                   8, 9, 10, 11, 12, 13, 14, 15, \
+                   16, 17, 18, 19
+    TRANSPOSE8x8_W 8, 9, 10, 11, 12, 13, 14, 15, \
+                   0, 1, 2, 3, 4, 5, 6, 7,       \
+                   16, 17, 18, 19
+    ST xv, , $a0, 32, 0, 1, 2, 3, 4, 5, 6, 7
+endfunc
+.endm
+
+TEST_TRANSPOSE8x8_W test_transpose8x8_w, cpucfg_lasx
+
+.macro TEST_TRANSPOSE4x4_D name, cpucfg
+function \name, \cpucfg
+    la.local $t0,   test_d
+    LD xv, , $t0, 32, 0, 1, 2, 3
+    TRANSPOSE4x4_D 0, 1, 2, 3, \
+                   4, 5, 6, 7, \
+                   8, 9
+    TRANSPOSE4x4_D 4, 5, 6, 7, \
+                   0, 1, 2, 3, \
+                   8, 9
+    ST xv, , $a0, 32, 0, 1, 2, 3
+endfunc
+.endm
+
+TEST_TRANSPOSE4x4_D test_transpose4x4_d, cpucfg_lasx
