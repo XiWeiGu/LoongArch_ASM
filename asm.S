@@ -2,40 +2,148 @@
 // Contributed by Gu Xiwei(2414434710@qq.com)
 //
 
+// The prefix of function name, default is null.
 #define ASM_PREF
 
+// Vector instruction sets
 #define cpucfg_lsx   0x01 // (1 << 0)
 #define cpucfg_lasx  0x03 // (1 << 1) | cpucfg_lsx
 #define cpucfg_lsx2  0x05 // (1 << 2) | cpucfg_lsx
 #define cpucfg_lasx2 0x0f // (1 << 3) | cpucfg_lsx2 | cpucfg_lasx2 | cpucfg_lsx
+
+#ifdef __LP64__
+// The size of int register and FP register.
+#define REG_SIZE 3
+#endif
+
+// The max registers available to the user which
+// do not need to be preserved across calls.
+// Ref: https://loongson.github.io/LoongArch-Documentation/LoongArch-ELF-ABI-CN.html
+#define MAX_INT_CALLER_SAVED 17
+#define MAX_FP_CALLER_SAVED  24
 
 .altmacro // Enable alternate macro mode
 
 //
 // Auxiliary Macros
 //
-.macro function name, cpucfg, align=4
-.macro endfunc
-    jirl    $r0, $r1, 0x0
+// function:
+// name   = function name.
+// cpucfg = specified the vector instruction set.
+// align  = align to the specified byte.
+// args   = number of arguments. loads them from stack if needed.
+// regs   = number of int registers used. pushes callee-saved regs if needed.
+// fregs  = number of FP registers used. pushes callee-saved regs if needed.
+// stack  = (optional) stack size to be allocated. If the required stack alignment is
+//          larger than the defaut stack alignment (16 bytes) the stack will be manually aligned
+//          and an extra int register will be specified to hold the original stack
+//          pointer if do want to store on stack.
+.macro function name:req, cpucfg:req, align=4, args=0, regs=0, fregs=0, stack:vararg
 .if \cpucfg == cpucfg_lsx
-    .size ASM_PREF\name\()_lsx, . - ASM_PREF\name\()_lsx
+    function_internal ASM_PREF\name\()_lsx, \cpucfg, \align, \args, \regs, \fregs, \stack
 .elseif \cpucfg == cpucfg_lasx
-    .size ASM_PREF\name\()_lasx, . - ASM_PREF\name\()_lasx
+    function_internal ASM_PREF\name\()_lasx, \cpucfg, \align, \args, \regs, \fregs, \stack
+.else
+    function_internal ASM_PREF\name\()_c, \cpucfg, \align, \args, \regs, \fregs, \stack
 .endif
-    .purgem endfunc
-.endm
+.endm // End function
+.macro function_internal name:req, cpucfg:req, align=4, args=0, regs=0, fregs=0, stack:vararg
+.macro endfunc
+.ifnb \stack
+    free_stack \cpucfg, \stack
+.endif
+pop_if_used \regs, \fregs
+jirl    $r0, $r1, 0x0
+.size \name, . - \name
+.purgem endfunc
+.endm // End of endfunc
 .text ;
 .align \align ;
-.if \cpucfg == cpucfg_lsx
-.globl ASM_PREF\name\()_lsx ;
-.type  ASM_PREF\name\()_lsx, @function ;
-ASM_PREF\name\()_lsx: ;
-.elseif \cpucfg == cpucfg_lasx
-.globl ASM_PREF\name\()_lasx ;
-.type  ASM_PREF\name\()_lasx, @function ;
-ASM_PREF\name\()_lasx: ;
+.globl \name ;
+.type  \name, @function ;
+\name: ;
+push_if_used \regs, \fregs
+.ifnb \stack
+    alloc_stack \cpucfg, \stack
 .endif
-.endm
+.endm // End function_internal
+.macro alloc_stack cpucfg:req, size:req, reg:vararg
+.if \cpucfg == cpucfg_lasx
+// For 256-bit vector instructions, the stack requires 32 byte alignment.
+// If reg is not empty, save original stack location $sp into reg directly,
+// else an additional 8 bytes are allocated on the stack to save original
+// stack location $sp (loongarch64).
+la.local    $t0,    align_mask
+ld.d        $t1,    $t0,    0
+.ifnb \reg
+    or      \reg,   $sp,    $sp
+    and     $sp,    $sp,    $t1
+    addi.d  $sp,    $sp,    -\size
+.else
+    or      $t0,    $sp,    $sp
+    and     $sp,    $sp,    $t1
+    addi.d  $sp,    $sp,    -(\size + 8)
+    st.d    $t0,    $sp,    \size
+.endif
+.else
+    addi.d  $sp,    $sp,    -\size
+.endif
+.endm // End alloc_stack
+.macro free_stack cpucfg:req, size:req, reg:vararg
+.if \cpucfg == cpucfg_lasx
+.ifnb \reg
+    or      $sp,    \reg,   \reg
+.else
+    ld.d    $sp,    $sp,    \size
+.endif
+.else
+    addi.d  $sp,    $sp,    \size
+.endif
+.endm //End free_stack
+.macro push_if_used regs, fregs
+.if \regs > MAX_INT_CALLER_SAVED
+    addi.d      $sp,    $sp,    -((\regs - MAX_INT_CALLER_SAVED) << REG_SIZE)
+    push_regs 0, \regs - MAX_INT_CALLER_SAVED - 1
+.endif
+.if \fregs > MAX_FP_CALLER_SAVED
+    addi.d      $sp,    $sp,    -((\fregs - MAX_FP_CALLER_SAVED) << REG_SIZE)
+    push_fregs 0, \fregs - MAX_FP_CALLER_SAVED - 1
+.endif
+.endm // End push_if_used
+.macro pop_if_used regs, fregs
+.if \fregs > MAX_FP_CALLER_SAVED
+    pop_fregs 0, \fregs - MAX_FP_CALLER_SAVED - 1
+    addi.d      $sp,    $sp,    (\fregs - MAX_FP_CALLER_SAVED) << REG_SIZE
+.endif
+.if \regs > MAX_INT_CALLER_SAVED
+    pop_regs 0, \regs - MAX_INT_CALLER_SAVED - 1
+    addi.d      $sp,    $sp,    (\regs - MAX_INT_CALLER_SAVED) << REG_SIZE
+.endif
+.endm // End pop_if_used
+.macro push_regs from, to
+    st.d    $s\()\from,     $sp,    \from << REG_SIZE
+.if \to - \from
+    push_regs %from + 1, \to
+.endif
+.endm // End push_regs
+.macro pop_regs from, to
+    ld.d    $s\()\from,     $sp,    \from << REG_SIZE
+.if \to - \from
+    pop_regs %from + 1, \to
+.endif
+.endm // End pop_regs
+.macro push_fregs from, to
+    fst.d   $fs\()\from,    $sp,    \from << REG_SIZE
+.if \to - \from
+    push_fregs %from + 1, \to
+.endif
+.endm // End push_fregs
+.macro pop_fregs from, to
+    fld.d   $fs\()\from,    $sp,    \from << REG_SIZE
+.if \to - \from
+    pop_fregs %from + 1, \to
+.endif
+.endm // End pop_fregs
 //
 // Basic instruction execution template
 // *_template: Both input and output are register numbers,
@@ -89,6 +197,11 @@ ASM_PREF\name\()_lasx: ;
 .align   \align
 \name:
 .endm
+
+const align_mask
+.dword ~(32 - 1)
+endconst
+
 
 
 //
