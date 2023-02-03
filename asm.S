@@ -11,9 +11,30 @@
 #define cpucfg_lsx2  0x05 // (1 << 2) | cpucfg_lsx
 #define cpucfg_lasx2 0x0f // (1 << 3) | cpucfg_lsx2 | cpucfg_lasx2 | cpucfg_lsx
 
-#ifdef __LP64__
-// The size of int register and FP register.
-#define REG_SIZE 3
+#ifdef __loongarch_lp64
+#define LA_REG    int64_t
+#define REG_SIZE  8
+#define REG_LOG   3
+#define FREG_SIZE 8
+#define FREG_LOG  3
+#define PTR_ADDI  addi.d
+#define PTR_ADD   add.d
+#define PTR_SUB   sub.d
+#define PTR_LD    ld.d
+#define PTR_ST    st.d
+#define PTR_SLLI  slli.d
+#else
+#define LA_REG    int32_t
+#define REG_SIZE  4
+#define REG_LOG   2
+#define FREG_SIZE 8
+#define FREG_LOG  3
+#define PTR_ADDI  addi.w
+#define PTR_ADD   add.w
+#define PTR_SUB   sub.w
+#define PTR_LD    ld.w
+#define PTR_ST    st.w
+#define PTR_SLLI  slli.w
 #endif
 
 // The max registers available to the user which
@@ -74,72 +95,72 @@ push_if_used \regs, \fregs
 // else an additional 8 bytes are allocated on the stack to save original
 // stack location $sp (loongarch64).
 la.local    $t0,    align_mask
-ld.d        $t1,    $t0,    0
+PTR_LD      $t1,    $t0,    0
 .ifnb \reg
-    or      \reg,   $sp,    $sp
-    and     $sp,    $sp,    $t1
-    addi.d  $sp,    $sp,    -\size
+    or          \reg,   $sp,    $sp
+    and         $sp,    $sp,    $t1
+    PTR_ADDI    $sp,    $sp,    -\size
 .else
-    or      $t0,    $sp,    $sp
-    and     $sp,    $sp,    $t1
-    addi.d  $sp,    $sp,    -(\size + 8)
-    st.d    $t0,    $sp,    \size
+    or          $t0,    $sp,    $sp
+    and         $sp,    $sp,    $t1
+    PTR_ADDI    $sp,    $sp,    -(\size + REG_SIZE)
+    PTR_ST      $t0,    $sp,    \size
 .endif
 .else
-    addi.d  $sp,    $sp,    -\size
+    PTR_ADDI    $sp,    $sp,    -\size
 .endif
 .endm // End alloc_stack
 .macro free_stack cpucfg:req, size:req, reg:vararg
 .if \cpucfg == cpucfg_lasx
 .ifnb \reg
-    or      $sp,    \reg,   \reg
+    or          $sp,    \reg,   \reg
 .else
-    ld.d    $sp,    $sp,    \size
+    PTR_LD      $sp,    $sp,    \size
 .endif
 .else
-    addi.d  $sp,    $sp,    \size
+    PTR_ADDI    $sp,    $sp,    \size
 .endif
 .endm //End free_stack
 .macro push_if_used regs, fregs
 .if \regs > MAX_INT_CALLER_SAVED
-    addi.d      $sp,    $sp,    -((\regs - MAX_INT_CALLER_SAVED) << REG_SIZE)
+    PTR_ADDI      $sp,    $sp,    -((\regs - MAX_INT_CALLER_SAVED) << REG_LOG)
     push_regs 0, \regs - MAX_INT_CALLER_SAVED - 1
 .endif
 .if \fregs > MAX_FP_CALLER_SAVED
-    addi.d      $sp,    $sp,    -((\fregs - MAX_FP_CALLER_SAVED) << REG_SIZE)
+    PTR_ADDI      $sp,    $sp,    -((\fregs - MAX_FP_CALLER_SAVED) << FREG_LOG)
     push_fregs 0, \fregs - MAX_FP_CALLER_SAVED - 1
 .endif
 .endm // End push_if_used
 .macro pop_if_used regs, fregs
 .if \fregs > MAX_FP_CALLER_SAVED
     pop_fregs 0, \fregs - MAX_FP_CALLER_SAVED - 1
-    addi.d      $sp,    $sp,    (\fregs - MAX_FP_CALLER_SAVED) << REG_SIZE
+    PTR_ADDI      $sp,    $sp,    (\fregs - MAX_FP_CALLER_SAVED) << FREG_LOG
 .endif
 .if \regs > MAX_INT_CALLER_SAVED
     pop_regs 0, \regs - MAX_INT_CALLER_SAVED - 1
-    addi.d      $sp,    $sp,    (\regs - MAX_INT_CALLER_SAVED) << REG_SIZE
+    PTR_ADDI      $sp,    $sp,    (\regs - MAX_INT_CALLER_SAVED) << REG_LOG
 .endif
 .endm // End pop_if_used
 .macro push_regs from, to
-    st.d    $s\()\from,     $sp,    \from << REG_SIZE
+    PTR_ST    $s\()\from,     $sp,    \from << REG_LOG
 .if \to - \from
     push_regs %from + 1, \to
 .endif
 .endm // End push_regs
 .macro pop_regs from, to
-    ld.d    $s\()\from,     $sp,    \from << REG_SIZE
+    PTR_LD    $s\()\from,     $sp,    \from << REG_LOG
 .if \to - \from
     pop_regs %from + 1, \to
 .endif
 .endm // End pop_regs
 .macro push_fregs from, to
-    fst.d   $fs\()\from,    $sp,    \from << REG_SIZE
+    fst.d   $fs\()\from,    $sp,    \from << FREG_LOG
 .if \to - \from
     push_fregs %from + 1, \to
 .endif
 .endm // End push_fregs
 .macro pop_fregs from, to
-    fld.d   $fs\()\from,    $sp,    \from << REG_SIZE
+    fld.d   $fs\()\from,    $sp,    \from << FREG_LOG
 .if \to - \from
     pop_fregs %from + 1, \to
 .endif
