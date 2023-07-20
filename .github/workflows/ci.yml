@@ -28,4 +28,3 @@ jobs:
       run: |
         export PATH=/opt/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.1/bin:$PATH
         export LD_LIBRARY_PATH=/opt/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.1/sysroot/usr/lib64:$LD_LIBRARY_PATH
-        make

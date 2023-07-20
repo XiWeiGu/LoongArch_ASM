@@ -11,30 +11,42 @@
 #define cpucfg_lsx2  0x05 // (1 << 2) | cpucfg_lsx
 #define cpucfg_lasx2 0x0f // (1 << 3) | cpucfg_lsx2 | cpucfg_lasx2 | cpucfg_lsx
 
-#ifdef __loongarch_lp64
+#if __loongarch_grlen == 64
 #define LA_REG    int64_t
 #define REG_SIZE  8
 #define REG_LOG   3
-#define FREG_SIZE 8
-#define FREG_LOG  3
 #define PTR_ADDI  addi.d
 #define PTR_ADD   add.d
 #define PTR_SUB   sub.d
 #define PTR_LD    ld.d
 #define PTR_ST    st.d
 #define PTR_SLLI  slli.d
+#define PTR_SRLI  srli.d
+#define PTR_ALSL  alsl.d
 #else
 #define LA_REG    int32_t
 #define REG_SIZE  4
 #define REG_LOG   2
-#define FREG_SIZE 8
-#define FREG_LOG  3
 #define PTR_ADDI  addi.w
 #define PTR_ADD   add.w
 #define PTR_SUB   sub.w
 #define PTR_LD    ld.w
 #define PTR_ST    st.w
 #define PTR_SLLI  slli.w
+#define PTR_SRLI  srli.w
+#define PTR_ALSL  alsl.w
+#endif
+
+#if __loongarch_frlen == 64
+#define FREG_SIZE 8
+#define FREG_LOG  3
+#define PTR_FLD   fld.d
+#define PTR_FST   fst.d
+#else
+#define FREG_SIZE 4
+#define FREG_LOG  2
+#define PTR_FLD   fld.s
+#define PTR_FST   fst.s
 #endif
 
 // The max registers available to the user which
@@ -59,7 +71,7 @@
 //          larger than the defaut stack alignment (16 bytes) the stack will be manually aligned
 //          and an extra int register will be specified to hold the original stack
 //          pointer if do want to store on stack.
-.macro function name:req, cpucfg:req, align=4, args=0, regs=0, fregs=0, stack:vararg
+.macro function name:req, /*cpucfg:req,*/ /*align=4,*/ args=0, regs=0, fregs=0/*, stack:vararg*/
 .if \cpucfg == cpucfg_lsx
     function_internal ASM_PREF\name\()_lsx, \cpucfg, \align, \args, \regs, \fregs, \stack
 .elseif \cpucfg == cpucfg_lasx
@@ -154,61 +166,214 @@ PTR_LD      $t1,    $t0,    0
 .endif
 .endm // End pop_regs
 .macro push_fregs from, to
-    fst.d   $fs\()\from,    $sp,    \from << FREG_LOG
+    PTR_FST   $fs\()\from,    $sp,    \from << FREG_LOG
 .if \to - \from
     push_fregs %from + 1, \to
 .endif
 .endm // End push_fregs
 .macro pop_fregs from, to
-    fld.d   $fs\()\from,    $sp,    \from << FREG_LOG
+    PTR_FLD   $fs\()\from,    $sp,    \from << FREG_LOG
 .if \to - \from
     pop_fregs %from + 1, \to
 .endif
 .endm // End pop_fregs
+
 //
-// Basic instruction execution template
-// *_template: Both input and output are register numbers,
-// will be parsed to the specified width.
-// *_template2: only output is register number, using
-// input directly.
-// *_template3: output and in1 are register number, using
-// in0 directly.
+// Instruction Related Macros
 //
-.macro xv_template ins, in0, in1, out // 256-bit Vector
-    \ins $xr\out, $xr\in1, $xr\in0
-.endm
-.macro v_template ins, in0, in1, out // 128-bit Vector
-    \ins $vr\out, $vr\in1, $vr\in0
-.endm
-.macro f_template ins, in0, in1, out // 64-bit FPR
-    \ins $f\out, $f\in1, $f\in0
-.endm
-.macro xv_template2 ins, in0, in1, out // 256-bit Vector
-    \ins $xr\out, \in1, \in0
-.endm
-.macro v_template2 ins, in0, in1, out // 128-bit Vector
-    \ins $vr\out, \in1, \in0
-.endm
-.macro f_template2 ins, in0, in1, out // 64-bit FPR
-    \ins $f\out, \in1, \in0
-.endm
-.macro xv_template3 ins, in0, in1, out // 256-bit Vector
-    \ins $xr\out, $xr\in1, \in0
-.endm
-.macro v_template3 ins, in0, in1, out // 128-bit Vector
-    \ins $vr\out, $vr\in1, \in0
-.endm
-.macro f_template3 ins, in0, in1, out // 64-bit FPR
-    \ins $f\out, $f\in1, \in0
-.endm
+// GLD
 //
-// Macros parameter check
-//
-.macro parameter_check start, end, value
-.if \end - \start != \value
-    .err
+.macro GLD pre_op:req, suf_op=0, out:req, src:req, offset:req/* imm */, more:vararg
+.ifeqs "\suf_op", "0"
+    \pre_op\()ld    \out,   \src,   \offset
+.else
+    \pre_op\()ld.\suf_op    \out,   \src,   \offset
+.endif
+.ifnb \more
+    GLD \pre_op, \suf_op, \more
 .endif
 .endm
+
+//
+// GLD_INC
+//
+.macro GLD_INC pre_op:req, suf_op=0, inc:req, out:req, src:req, offset:req/* imm */, more:vararg
+.ifeqs "\suf_op", "0"
+    \pre_op\()ld    \out,   \src,   \offset
+.else
+    \pre_op\()ld.\suf_op    \out,   \src,   \offset
+.endif
+    PTR_ADDI  \src,   \src,   \inc
+.ifnb \more
+    GLD_INC \pre_op, \suf_op, \inc, \more
+.endif
+.endm
+//
+// GLDX is same as GLD except the stride is a register
+//
+.macro GLDX pre_op:req, suf_op=0, out:req, src:req, offset:req/* reg */, more:vararg
+.ifeqs "\suf_op", "0"
+    \pre_op\()ldx    \out,   \src,   \offset
+.else
+    \pre_op\()ldx.\suf_op    \out,   \src,   \offset
+.endif
+.ifnb \more
+    GLDX \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GLDREPL
+//
+.macro GLDREPL pre_op:req, suf_op:req, out:req, src:req, offset:req/* imm */, more:vararg
+    \pre_op\()ldrepl.\suf_op    \out,   \src,   \offset
+.ifnb \more
+    GLDREPL  \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GST
+//
+.macro GST pre_op:req, suf_op=0, src:req, dst:req, offset:req/* imm */, more:vararg
+.ifeqs "\suf_op", "0"
+    \pre_op\()st    \src,   \dst,   \offset
+.else
+    \pre_op\()st.\suf_op \src,  \dst, \offset
+.endif
+.ifnb \more
+    GST \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GMUL
+//
+.macro GMUL pre_op, suf_op:req, out:req, in0:req, in1:req, more:vararg
+    \pre_op\()mul.\suf_op   \out,   \in0,   \in1
+.ifnb \more
+    GMUL \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GMADD
+//
+.macro GMADD pre_op, suf_op:req, out:req, in0:req, in1:req, in2:req, more:vararg
+    \pre_op\()madd.\suf_op \out, \in0, \in1, \in2
+.ifnb \more
+    GMADD \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GADD
+//
+.macro GADD pre_op, suf_op:req, out:req, in0:req, in1:req, more:vararg
+    \pre_op\()add.\suf_op \out, \in0, \in1
+.ifnb \more
+    GADD \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GADDI
+//
+.macro GADDI pre_op, suf_op:req, out:req, in0:req, in1:req, more:vararg
+    \pre_op\()addi.\suf_op  \out,   \in0,   \in1
+.ifnb \more
+    GADDI \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GSLLI
+//
+.macro GSLLI pre_op, suf_op:req, out:req, in0:req, in1:req, more:vararg
+    \pre_op\()slli.\suf_op  \out,   \in0,   \in1
+.ifnb \more
+    GSLLI \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GINSVE0
+//
+.macro GINSVE0 pre_op:req, suf_op:req, out:req, in0:req, in1:req, more:vararg
+    \pre_op\()insve0.\suf_op    \out,   \in0,   \in1
+.ifnb \more
+    GINSVE0 \pre_op, \suf_op, \more
+.endif
+.endm
+//
+// GXOR
+//
+.macro GXOR pre_op:req, suf_op:req, out:req, in0:req, in1:req, more:vararg
+    \pre_op\()xor.\suf_op    \out,   \in0,   \in1
+.ifnb \more
+    GXOR \pre_op, \suf_op, \more
+.endif
+.endm
+
+//
+// Compound instructions
+//
+// GACC: Accumulate the values of vector registers
+//
+.macro GACC pre_op:req, suf_op:req, out:req, in:req, more:vararg
+.ifeqs "\pre_op", "xvf"
+    xvpermi.q              \out,   \in,    0x01
+    \pre_op\()add.\suf_op  \in,    \out,   \in
+    xvpackod.d             \out,   \in,    \in
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifeqs "\suf_op", "s"
+    xvpackod.w             \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.endif
+.endif
+
+.ifeqs "\pre_op", "vf"
+    vpackod.d              \out,   \in,    \in
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifeqs "\suf_op", "s"
+    vpackod.w              \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.endif
+.endif
+
+.ifeqs "\pre_op", "xv"
+    xvpermi.q              \out,   \in,    0x01
+    \pre_op\()add.\suf_op  \in,    \out,   \in
+    xvpackod.d             \out,   \in,    \in
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifnc "\suf_op", "d"
+    xvpackod.w             \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifnc "\suf_op", "w"
+    xvpackod.h             \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifnc "\suf_op", "h"
+    xvpackod.b             \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.endif
+.endif
+.endif
+.endif
+
+.ifeqs "\pre_op", "v"
+    vpackod.d              \out,   \in,    \in
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifnc "\suf_op", "d"
+    vpackod.w              \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifnc "\suf_op", "w"
+    vpackod.h              \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.ifnc "\suf_op", "h"
+    vpackod.b              \in,    \out,   \out
+    \pre_op\()add.\suf_op  \out,   \out,   \in
+.endif
+.endif
+.endif
+.endif
+
+.ifnb \more
+    GACC \pre_op, \suf_op, \more
+.endif
+.endm
+
 .macro const name, align=5
 .macro endconst
     .size  \name, . - \name
@@ -222,127 +387,6 @@ PTR_LD      $t1,    $t0,    0
 const align_mask
 .dword ~(32 - 1)
 endconst
-
-
-
-//
-// Instruction Related Macros
-//
-//
-// LD: Support fetch 32-bits, 64-bits, 128-bits and 256-bit from src with stride(imm).
-// LD xv, , src, stride, 0, 2: Fetch 256-bit into $xr0, $xr2 with stride
-// LD v , , src, stride, 0, 2: Fetch 128-bit into $vr0, $vr2 with stride
-// LD f, d, src, stride, 0, 2: Fetch 64-bits into $f0, $f2 with stride
-// LD f, s, src, stride, 0, 2: Fetch 32-bits into $f0, $f2 with stride
-//
-.macro LD pre_op:req, suf_op=0, src:req, stride:req, out:req, more:vararg
-.if \suf_op == 0
-    \pre_op\()_template2 \pre_op\()ld, 0, \src, \out
-.else
-    \pre_op\()_template2 \pre_op\()ld.\suf_op, 0, \src, \out
-.endif
-    addi.d    \src,    \src,   \stride
-.ifnb \more
-    LD \pre_op, \suf_op, \src, \stride, \more
-.endif
-.endm
-//
-// LDX is same as LD except the stride is a register
-//
-.macro LDX pre_op:req, suf_op=0, src:req, stride:req, out:req, more:vararg
-.if \suf_op == 0
-    \pre_op\()_template2 \pre_op\()ld, 0, \src, \out
-.else
-    \pre_op\()_template2 \pre_op\()ld.\suf_op, 0, \src, \out
-.endif
-    add.d     \src,    \src,   \stride
-.ifnb \more
-    LDX \pre_op, \suf_op, \src, \stride, \more
-.endif
-.endm
-//
-// ST: Support store 32-bits, 64-bits, 128-bits and 256-bit to dst with stride(imm).
-// ST xv, , dst, stride, 0, 2: Store 256-bit from $xr0, $xr2 into dst with stride
-// ST v , , dst, stride, 0, 2: Store 128-bit from $vr0, $vr2 into dst with stride
-// ST f, d, dst, stride, 0, 2: Store 64-bits from $f0, $f2 into dst with stride
-// ST f, s, dst, stride, 0, 2: Store 32-bits from $f0, $f2 into dst with stride
-//
-.macro ST pre_op:req, suf_op=0, dst:req, stride:req, in:req, more:vararg
-.if \suf_op == 0
-    \pre_op\()_template2 \pre_op\()st, 0, \dst, \in
-.else
-    \pre_op\()_template2 \pre_op\()st.\suf_op, 0, \dst, \in
-.endif
-    addi.d    \dst,    \dst,   \stride
-.ifnb \more
-    ST \pre_op, \suf_op, \dst, \stride, \more
-.endif
-.endm
-//
-// STX is same as ST except the stride is a register
-//
-.macro STX pre_op:req, suf_op=0, dst:req, stride:req, in:req, more:vararg
-.if \suf_op == 0
-    \pre_op\()_template2 \pre_op\()st, 0, \dst, \in
-.else
-    \pre_op\()_template2 \pre_op\()st.\suf_op, 0, \dst, \in
-.endif
-    add.d    \dst,    \dst,   \stride
-.ifnb \more
-    STX \pre_op, \suf_op, \dst, \stride, \more
-.endif
-.endm
-//
-// XOR: Support continuous xor and has no suf_op param.
-// XOR xv, 0, 2, 1, 3, 5, 4 is equal to:
-// xvxor.v $xr1, $xr2, $xr0
-// xvxor.v $xr4, $xr5, $xr3
-//
-.macro XOR pre_op:req, in0:req, in1:req, out:req, more:vararg
-    \pre_op\()_template \pre_op\()xor.v, \in0, \in1, \out
-.ifnb \more
-    XOR \pre_op, \more
-.endif
-.endm
-//
-// MOV
-//
-.macro MOV pre_op:req, in:req, out:req, more:vararg
-    \pre_op\()_template \pre_op\()or.v, \in, \in, \out
-.ifnb \more
-    MOV \pre_op, \more
-.endif
-.endm
-//
-// ILVL: Support continuous ilvl.
-// ILVL xv, w, 0, 2, 1, 3, 5, 4 is equal to:
-// xvilvl.w $xr1, $xr2, $xr0
-// xvilvl.w $xr4, $xr5, $xr3
-//
-.macro ILVL pre_op:req, suf_op:req, in0:req, in1:req, out:req, more:vararg
-    \pre_op\()_template    \pre_op\()ilvl.\suf_op, \in0, \in1, \out
-.ifnb \more
-    ILVL \pre_op, \suf_op, \more
-.endif
-.endm
-//
-// ILVH: Support continuous ilvh. Like ILVL.
-//
-.macro ILVH pre_op:req, suf_op:req, in0:req, in1:req, out:req, more:vararg
-    \pre_op\()_template    \pre_op\()ilvh.\suf_op, \in0, \in1, \out
-.ifnb \more
-    ILVH \pre_op, \suf_op, \more
-.endif
-.endm
-//
-// PERMI: Support continuous permi.
-//
-.macro PERMI pre_op:req, suf_op:req, in0:req, in1:req, out:req, more:vararg
-    \pre_op\()_template3 \pre_op\()permi.\suf_op \in0, \in1, \out
-.ifnb \more
-    PERMI \pre_op, \suf_op, \more
-.endif
-.endm
 
 
 //
